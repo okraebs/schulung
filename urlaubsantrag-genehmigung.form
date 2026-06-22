@@ -1,0 +1,26 @@
+{
+  "components": [
+    {
+      "type": "text",
+      "id": "Field_info_genehmigung",
+      "text": "## Genehmigung erforderlich\nMitarbeiter **{{mitarbeiterName}}** (Abteilung: {{abteilung}}) beantragt **{{urlaubstage}}** Urlaubstage.\n\nDie obigen Werte stammen aus den Prozessvariablen, die in der Start-Form gesetzt wurden."
+    },
+    {
+      "label": "Antrag genehmigt?",
+      "type": "checkbox",
+      "id": "Field_genehmigt",
+      "key": "genehmigt"
+    },
+    {
+      "label": "Kommentar des Vorgesetzten",
+      "type": "textarea",
+      "id": "Field_kommentar",
+      "key": "kommentar"
+    }
+  ],
+  "type": "default",
+  "id": "urlaubsantragGenehmigung",
+  "executionPlatform": "Camunda Platform",
+  "executionPlatformVersion": "7.20.0",
+  "schemaVersion": 16
+}

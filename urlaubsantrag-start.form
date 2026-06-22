@@ -1,0 +1,60 @@
+{
+  "components": [
+    {
+      "text": "# Urlaubsantrag\nBitte fülle die folgenden Felder aus. Jeder Feld-**key** wird als gleichnamige Prozessvariable gespeichert.",
+      "type": "text",
+      "id": "Field_info_start"
+    },
+    {
+      "label": "Name des Mitarbeiters",
+      "type": "textfield",
+      "id": "Field_mitarbeiterName",
+      "key": "mitarbeiterName",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Abteilung",
+      "values": [
+        {
+          "label": "Entwicklung",
+          "value": "entwicklung"
+        },
+        {
+          "label": "Vertrieb",
+          "value": "vertrieb"
+        },
+        {
+          "label": "Verwaltung",
+          "value": "verwaltung"
+        }
+      ],
+      "type": "select",
+      "id": "Field_abteilung",
+      "key": "abteilung",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Anzahl Urlaubstage",
+      "type": "number",
+      "id": "Field_urlaubstage",
+      "key": "urlaubstage",
+      "validate": {
+        "required": true,
+        "min": "1"
+      }
+    }
+  ],
+  "type": "default",
+  "id": "urlaubsantragStart",
+  "executionPlatform": "Camunda Platform",
+  "executionPlatformVersion": "7.20.0",
+  "schemaVersion": 19,
+  "exporter": {
+    "name": "Camunda Modeler",
+    "version": "5.47.0"
+  }
+}
