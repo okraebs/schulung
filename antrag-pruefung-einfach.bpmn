@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_AntragEinfach" targetNamespace="http://camunda.org/schema/1.0/bpmn" exporter="Camunda Modeler" exporterVersion="5.47.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.24.0" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL BPMN20.xsd">
+  <bpmn2:process id="antragPruefungEinfach" name="Antragsprüfung (einfach)" isExecutable="true" camunda:historyTimeToLive="P180D">
+    <bpmn2:startEvent id="StartEvent_1" name="Antrag eingegangen">
+      <bpmn2:outgoing>Flow_Start_Fork</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:parallelGateway id="Gateway_Fork" name="Prüfungen starten">
+      <bpmn2:incoming>Flow_Start_Fork</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Fork_Bonitaet</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_Fork_Dokumente</bpmn2:outgoing>
+    </bpmn2:parallelGateway>
+    <bpmn2:sequenceFlow id="Flow_Start_Fork" sourceRef="StartEvent_1" targetRef="Gateway_Fork" />
+    <bpmn2:sequenceFlow id="Flow_Fork_Bonitaet" sourceRef="Gateway_Fork" targetRef="Sub_Bonitaet" />
+    <bpmn2:sequenceFlow id="Flow_Fork_Dokumente" sourceRef="Gateway_Fork" targetRef="Sub_Dokumente" />
+    <bpmn2:subProcess id="Sub_Bonitaet" name="Bonität prüfen">
+      <bpmn2:incoming>Flow_Fork_Bonitaet</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Bonitaet_Join</bpmn2:outgoing>
+      <bpmn2:startEvent id="Start_Bonitaet">
+        <bpmn2:outgoing>Flow_b1</bpmn2:outgoing>
+      </bpmn2:startEvent>
+      <bpmn2:userTask id="Task_Bonitaet" name="Bonität bewerten" camunda:assignee="demo">
+        <bpmn2:incoming>Flow_b1</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_b2</bpmn2:outgoing>
+      </bpmn2:userTask>
+      <bpmn2:endEvent id="End_Bonitaet">
+        <bpmn2:incoming>Flow_b2</bpmn2:incoming>
+      </bpmn2:endEvent>
+      <bpmn2:sequenceFlow id="Flow_b1" sourceRef="Start_Bonitaet" targetRef="Task_Bonitaet" />
+      <bpmn2:sequenceFlow id="Flow_b2" sourceRef="Task_Bonitaet" targetRef="End_Bonitaet" />
+    </bpmn2:subProcess>
+    <bpmn2:subProcess id="Sub_Dokumente" name="Dokumente prüfen">
+      <bpmn2:incoming>Flow_Fork_Dokumente</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Dokumente_Join</bpmn2:outgoing>
+      <bpmn2:startEvent id="Start_Dokumente">
+        <bpmn2:outgoing>Flow_d1</bpmn2:outgoing>
+      </bpmn2:startEvent>
+      <bpmn2:userTask id="Task_Dokumente" name="Dokumente prüfen" camunda:assignee="demo">
+        <bpmn2:incoming>Flow_d1</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_d2</bpmn2:outgoing>
+      </bpmn2:userTask>
+      <bpmn2:endEvent id="End_Dokumente">
+        <bpmn2:incoming>Flow_d2</bpmn2:incoming>
+      </bpmn2:endEvent>
+      <bpmn2:sequenceFlow id="Flow_d1" sourceRef="Start_Dokumente" targetRef="Task_Dokumente" />
+      <bpmn2:sequenceFlow id="Flow_d2" sourceRef="Task_Dokumente" targetRef="End_Dokumente" />
+    </bpmn2:subProcess>
+    <bpmn2:parallelGateway id="Gateway_Join" name="Prüfungen abgeschlossen">
+      <bpmn2:incoming>Flow_Bonitaet_Join</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Dokumente_Join</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Join_End</bpmn2:outgoing>
+    </bpmn2:parallelGateway>
+    <bpmn2:sequenceFlow id="Flow_Bonitaet_Join" sourceRef="Sub_Bonitaet" targetRef="Gateway_Join" />
+    <bpmn2:sequenceFlow id="Flow_Dokumente_Join" sourceRef="Sub_Dokumente" targetRef="Gateway_Join" />
+    <bpmn2:endEvent id="EndEvent_1" name="Antrag geprüft">
+      <bpmn2:incoming>Flow_Join_End</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="Flow_Join_End" sourceRef="Gateway_Join" targetRef="EndEvent_1" />
+  </bpmn2:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="antragPruefungEinfach">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="160" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="146" y="265" width="68" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Fork_di" bpmnElement="Gateway_Fork">
+        <dc:Bounds x="255" y="215" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="245" y="272" width="71" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1072" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1056" y="265" width="70" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_Bonitaet_di" bpmnElement="Sub_Bonitaet" isExpanded="true">
+        <dc:Bounds x="370" y="80" width="350" height="120" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Bonitaet_di" bpmnElement="Start_Bonitaet">
+        <dc:Bounds x="400" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Bonitaet_di" bpmnElement="Task_Bonitaet">
+        <dc:Bounds x="490" y="100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Bonitaet_di" bpmnElement="End_Bonitaet">
+        <dc:Bounds x="642" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_b1_di" bpmnElement="Flow_b1">
+        <di:waypoint x="436" y="140" />
+        <di:waypoint x="490" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_b2_di" bpmnElement="Flow_b2">
+        <di:waypoint x="590" y="140" />
+        <di:waypoint x="642" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Sub_Dokumente_di" bpmnElement="Sub_Dokumente" isExpanded="true">
+        <dc:Bounds x="370" y="280" width="350" height="120" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Dokumente_di" bpmnElement="Start_Dokumente">
+        <dc:Bounds x="400" y="322" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Dokumente_di" bpmnElement="Task_Dokumente">
+        <dc:Bounds x="490" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Dokumente_di" bpmnElement="End_Dokumente">
+        <dc:Bounds x="642" y="322" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_d1_di" bpmnElement="Flow_d1">
+        <di:waypoint x="436" y="340" />
+        <di:waypoint x="490" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_d2_di" bpmnElement="Flow_d2">
+        <di:waypoint x="590" y="340" />
+        <di:waypoint x="642" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Gateway_Join_di" bpmnElement="Gateway_Join">
+        <dc:Bounds x="785" y="215" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="701" y="226" width="74" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_Fork_di" bpmnElement="Flow_Start_Fork">
+        <di:waypoint x="196" y="240" />
+        <di:waypoint x="255" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Fork_Bonitaet_di" bpmnElement="Flow_Fork_Bonitaet">
+        <di:waypoint x="280" y="215" />
+        <di:waypoint x="280" y="140" />
+        <di:waypoint x="370" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Fork_Dokumente_di" bpmnElement="Flow_Fork_Dokumente">
+        <di:waypoint x="280" y="265" />
+        <di:waypoint x="280" y="340" />
+        <di:waypoint x="370" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Bonitaet_Join_di" bpmnElement="Flow_Bonitaet_Join">
+        <di:waypoint x="720" y="140" />
+        <di:waypoint x="810" y="140" />
+        <di:waypoint x="810" y="215" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Dokumente_Join_di" bpmnElement="Flow_Dokumente_Join">
+        <di:waypoint x="720" y="340" />
+        <di:waypoint x="810" y="340" />
+        <di:waypoint x="810" y="265" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Join_End_di" bpmnElement="Flow_Join_End">
+        <di:waypoint x="835" y="240" />
+        <di:waypoint x="1072" y="240" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn2:definitions>

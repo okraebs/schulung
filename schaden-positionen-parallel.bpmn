@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_SchadenPositionen" targetNamespace="http://camunda.org/schema/1.0/bpmn" exporter="Camunda Modeler" exporterVersion="5.47.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.24.0" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL BPMN20.xsd">
+  <bpmn2:process id="schadenPositionenParallel" name="Schadenpositionen (parallel)" isExecutable="true" camunda:historyTimeToLive="P180D">
+    <bpmn2:startEvent id="StartEvent_1" name="Schaden gemeldet">
+      <bpmn2:outgoing>f1</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:userTask id="Task_Aufnehmen" name="Schaden aufnehmen" camunda:assignee="demo">
+      <bpmn2:incoming>f1</bpmn2:incoming>
+      <bpmn2:outgoing>f2</bpmn2:outgoing>
+    </bpmn2:userTask>
+    <bpmn2:task id="Task_Ermitteln" name="Positionen ermitteln">
+      <bpmn2:extensionElements>
+        <camunda:inputOutput>
+          <camunda:outputParameter name="positionen">
+            <camunda:list>
+              <camunda:value>Fahrzeugschaden</camunda:value>
+              <camunda:value>Personenschaden</camunda:value>
+              <camunda:value>Sachschaden Dritter</camunda:value>
+              <camunda:value>Mietwagen</camunda:value>
+            </camunda:list>
+          </camunda:outputParameter>
+        </camunda:inputOutput>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>f2</bpmn2:incoming>
+      <bpmn2:outgoing>f3</bpmn2:outgoing>
+    </bpmn2:task>
+    <bpmn2:subProcess id="Sub_Position" name="Schadenposition bearbeiten">
+      <bpmn2:incoming>f3</bpmn2:incoming>
+      <bpmn2:outgoing>f4</bpmn2:outgoing>
+      <bpmn2:multiInstanceLoopCharacteristics isSequential="false" camunda:collection="positionen" camunda:elementVariable="position" />
+      <bpmn2:startEvent id="Start_Pos">
+        <bpmn2:outgoing>pf1</bpmn2:outgoing>
+      </bpmn2:startEvent>
+      <bpmn2:userTask id="Task_PosPruefen" name="Position prüfen: ${position}" camunda:assignee="demo">
+        <bpmn2:incoming>pf1</bpmn2:incoming>
+        <bpmn2:outgoing>pf2</bpmn2:outgoing>
+      </bpmn2:userTask>
+      <bpmn2:exclusiveGateway id="Gw_Strittig" name="Personenschaden?" default="pf3">
+        <bpmn2:incoming>pf2</bpmn2:incoming>
+        <bpmn2:outgoing>pf4</bpmn2:outgoing>
+        <bpmn2:outgoing>pf3</bpmn2:outgoing>
+      </bpmn2:exclusiveGateway>
+      <bpmn2:userTask id="Task_Gutachter" name="Gutachter beauftragen" camunda:assignee="demo">
+        <bpmn2:incoming>pf4</bpmn2:incoming>
+        <bpmn2:outgoing>pf5</bpmn2:outgoing>
+      </bpmn2:userTask>
+      <bpmn2:exclusiveGateway id="Gw_Merge">
+        <bpmn2:incoming>pf3</bpmn2:incoming>
+        <bpmn2:incoming>pf5</bpmn2:incoming>
+        <bpmn2:outgoing>pf6</bpmn2:outgoing>
+      </bpmn2:exclusiveGateway>
+      <bpmn2:userTask id="Task_PosFreigabe" name="Position freigeben" camunda:assignee="demo">
+        <bpmn2:incoming>pf6</bpmn2:incoming>
+        <bpmn2:outgoing>pf7</bpmn2:outgoing>
+      </bpmn2:userTask>
+      <bpmn2:endEvent id="End_Pos" name="Position erledigt">
+        <bpmn2:incoming>pf7</bpmn2:incoming>
+      </bpmn2:endEvent>
+      <bpmn2:sequenceFlow id="pf1" sourceRef="Start_Pos" targetRef="Task_PosPruefen" />
+      <bpmn2:sequenceFlow id="pf2" sourceRef="Task_PosPruefen" targetRef="Gw_Strittig" />
+      <bpmn2:sequenceFlow id="pf4" name="ja" sourceRef="Gw_Strittig" targetRef="Task_Gutachter">
+        <bpmn2:conditionExpression xsi:type="bpmn2:tFormalExpression">${position == 'Personenschaden'}</bpmn2:conditionExpression>
+      </bpmn2:sequenceFlow>
+      <bpmn2:sequenceFlow id="pf3" name="nein" sourceRef="Gw_Strittig" targetRef="Gw_Merge" />
+      <bpmn2:sequenceFlow id="pf5" sourceRef="Task_Gutachter" targetRef="Gw_Merge" />
+      <bpmn2:sequenceFlow id="pf6" sourceRef="Gw_Merge" targetRef="Task_PosFreigabe" />
+      <bpmn2:sequenceFlow id="pf7" sourceRef="Task_PosFreigabe" targetRef="End_Pos" />
+    </bpmn2:subProcess>
+    <bpmn2:task id="Task_Gesamt" name="Gesamtbetrag ermitteln">
+      <bpmn2:incoming>f4</bpmn2:incoming>
+      <bpmn2:outgoing>f5</bpmn2:outgoing>
+    </bpmn2:task>
+    <bpmn2:userTask id="Task_Regulierung" name="Regulierung freigeben" camunda:assignee="demo">
+      <bpmn2:incoming>f5</bpmn2:incoming>
+      <bpmn2:outgoing>f6</bpmn2:outgoing>
+    </bpmn2:userTask>
+    <bpmn2:endEvent id="EndEvent_1" name="Schaden reguliert">
+      <bpmn2:incoming>f6</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="f1" sourceRef="StartEvent_1" targetRef="Task_Aufnehmen" />
+    <bpmn2:sequenceFlow id="f2" sourceRef="Task_Aufnehmen" targetRef="Task_Ermitteln" />
+    <bpmn2:sequenceFlow id="f3" sourceRef="Task_Ermitteln" targetRef="Sub_Position" />
+    <bpmn2:sequenceFlow id="f4" sourceRef="Sub_Position" targetRef="Task_Gesamt" />
+    <bpmn2:sequenceFlow id="f5" sourceRef="Task_Gesamt" targetRef="Task_Regulierung" />
+    <bpmn2:sequenceFlow id="f6" sourceRef="Task_Regulierung" targetRef="EndEvent_1" />
+  </bpmn2:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="schadenPositionenParallel">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="160" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="146" y="225" width="66" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Aufnehmen_di" bpmnElement="Task_Aufnehmen">
+        <dc:Bounds x="250" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Ermitteln_di" bpmnElement="Task_Ermitteln">
+        <dc:Bounds x="400" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_Position_di" bpmnElement="Sub_Position" isExpanded="true">
+        <dc:Bounds x="560" y="80" width="640" height="320" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Pos_di" bpmnElement="Start_Pos">
+        <dc:Bounds x="590" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PosPruefen_di" bpmnElement="Task_PosPruefen">
+        <dc:Bounds x="650" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Strittig_di" bpmnElement="Gw_Strittig" isMarkerVisible="true">
+        <dc:Bounds x="800" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="792" y="145" width="67" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Gutachter_di" bpmnElement="Task_Gutachter">
+        <dc:Bounds x="775" y="280" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Merge_di" bpmnElement="Gw_Merge" isMarkerVisible="true">
+        <dc:Bounds x="920" y="175" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PosFreigabe_di" bpmnElement="Task_PosFreigabe">
+        <dc:Bounds x="1010" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Pos_di" bpmnElement="End_Pos">
+        <dc:Bounds x="1140" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1124" y="225" width="70" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="pf1_di" bpmnElement="pf1">
+        <di:waypoint x="626" y="200" />
+        <di:waypoint x="650" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="pf2_di" bpmnElement="pf2">
+        <di:waypoint x="750" y="200" />
+        <di:waypoint x="800" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="pf4_di" bpmnElement="pf4">
+        <di:waypoint x="825" y="225" />
+        <di:waypoint x="825" y="280" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="831" y="248" width="13" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="pf3_di" bpmnElement="pf3">
+        <di:waypoint x="850" y="200" />
+        <di:waypoint x="920" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="876" y="182" width="22" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="pf5_di" bpmnElement="pf5">
+        <di:waypoint x="875" y="320" />
+        <di:waypoint x="945" y="320" />
+        <di:waypoint x="945" y="225" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="pf6_di" bpmnElement="pf6">
+        <di:waypoint x="970" y="200" />
+        <di:waypoint x="1010" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="pf7_di" bpmnElement="pf7">
+        <di:waypoint x="1110" y="200" />
+        <di:waypoint x="1140" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Task_Gesamt_di" bpmnElement="Task_Gesamt">
+        <dc:Bounds x="1260" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Regulierung_di" bpmnElement="Task_Regulierung">
+        <dc:Bounds x="1410" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1570" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1554" y="225" width="70" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="196" y="200" />
+        <di:waypoint x="250" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="350" y="200" />
+        <di:waypoint x="400" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="500" y="200" />
+        <di:waypoint x="560" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="1200" y="200" />
+        <di:waypoint x="1260" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="1360" y="200" />
+        <di:waypoint x="1410" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="1510" y="200" />
+        <di:waypoint x="1570" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn2:definitions>
