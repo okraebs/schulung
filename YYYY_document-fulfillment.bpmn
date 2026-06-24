@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="document-fulfillment-definitions"
+                  targetNamespace="http://camunda.org/schema/1.0/bpmn"
+                  exporter="manual" exporterVersion="1.0">
+
+  <bpmn:message id="msg_DocumentRequestReceived" name="DocumentRequestReceived" />
+  <bpmn:message id="msg_DeliveryResultReceived" name="DeliveryResultReceived" />
+
+  <bpmn:process id="document_fulfillment" name="Dokumentauftrag erfuellen" isExecutable="true"
+                camunda:historyTimeToLive="P30D">
+
+    <bpmn:startEvent id="start" name="Dokumentanfrage empfangen">
+      <bpmn:outgoing>f_start_normalize</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="med_start" messageRef="msg_DocumentRequestReceived" />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="f_start_normalize" sourceRef="start" targetRef="normalizeRequest" />
+
+    <bpmn:serviceTask id="normalizeRequest" name="Anfrage normalisieren"
+                      camunda:delegateExpression="${normalizeRequestDelegate}">
+      <bpmn:incoming>f_start_normalize</bpmn:incoming>
+      <bpmn:outgoing>f_normalize_customer</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_normalize_customer" sourceRef="normalizeRequest" targetRef="loadCustomer" />
+
+    <bpmn:serviceTask id="loadCustomer" name="Kundendaten beschaffen"
+                      camunda:type="external" camunda:topic="load-customer-data">
+      <bpmn:incoming>f_normalize_customer</bpmn:incoming>
+      <bpmn:incoming>f_retry</bpmn:incoming>
+      <bpmn:outgoing>f_customer_contract</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_customer_contract" sourceRef="loadCustomer" targetRef="loadContract" />
+
+    <bpmn:serviceTask id="loadContract" name="Vertragsdaten beschaffen"
+                      camunda:type="external" camunda:topic="load-contract-data">
+      <bpmn:incoming>f_customer_contract</bpmn:incoming>
+      <bpmn:outgoing>f_contract_tariff</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_contract_tariff" sourceRef="loadContract" targetRef="loadTariff" />
+
+    <bpmn:serviceTask id="loadTariff" name="Tarifdaten beschaffen"
+                      camunda:type="external" camunda:topic="load-tariff-data">
+      <bpmn:incoming>f_contract_tariff</bpmn:incoming>
+      <bpmn:outgoing>f_tariff_completeness</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_tariff_completeness" sourceRef="loadTariff" targetRef="evalCompleteness" />
+
+    <bpmn:businessRuleTask id="evalCompleteness" name="Datenvollstaendigkeit bewerten"
+                           camunda:asyncBefore="true"
+                           camunda:decisionRef="data-completeness"
+                           camunda:mapDecisionResult="singleResult"
+                           camunda:resultVariable="completenessResult">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end"
+            class="de.demo.versicherung.korrespondenz.process.MapResultFlattenerListener">
+          <camunda:field name="source"><camunda:string>completenessResult</camunda:string></camunda:field>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_tariff_completeness</bpmn:incoming>
+      <bpmn:outgoing>f_completeness_gw</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="f_completeness_gw" sourceRef="evalCompleteness" targetRef="gw_completeness" />
+
+    <bpmn:exclusiveGateway id="gw_completeness" name="Vollstaendigkeit?" default="f_gw_variant">
+      <bpmn:incoming>f_completeness_gw</bpmn:incoming>
+      <bpmn:outgoing>f_gw_manual</bpmn:outgoing>
+      <bpmn:outgoing>f_gw_variant</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="f_gw_manual" name="MANUAL_REQUIRED" sourceRef="gw_completeness" targetRef="manualReview">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${completenessClass == "MANUAL_REQUIRED"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_gw_variant" name="FULL / DEGRADED_ALLOWED" sourceRef="gw_completeness" targetRef="evalVariant" />
+
+    <bpmn:businessRuleTask id="evalVariant" name="Dokumentvariante bestimmen"
+                           camunda:decisionRef="document-variant"
+                           camunda:mapDecisionResult="singleResult"
+                           camunda:resultVariable="variantResult">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end"
+            class="de.demo.versicherung.korrespondenz.process.MapResultFlattenerListener">
+          <camunda:field name="source"><camunda:string>variantResult</camunda:string></camunda:field>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_gw_variant</bpmn:incoming>
+      <bpmn:incoming>f_reduced_variant</bpmn:incoming>
+      <bpmn:outgoing>f_variant_policy</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="f_variant_policy" sourceRef="evalVariant" targetRef="evalPolicy" />
+
+    <bpmn:businessRuleTask id="evalPolicy" name="Auslieferungspolitik bestimmen"
+                           camunda:decisionRef="delivery-policy"
+                           camunda:mapDecisionResult="singleResult"
+                           camunda:resultVariable="policyResult">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end"
+            class="de.demo.versicherung.korrespondenz.process.MapResultFlattenerListener">
+          <camunda:field name="source"><camunda:string>policyResult</camunda:string></camunda:field>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_variant_policy</bpmn:incoming>
+      <bpmn:outgoing>f_policy_render</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="f_policy_render" sourceRef="evalPolicy" targetRef="renderDocument" />
+
+    <bpmn:serviceTask id="renderDocument" name="Dokument erzeugen"
+                      camunda:type="external" camunda:topic="render-document">
+      <bpmn:incoming>f_policy_render</bpmn:incoming>
+      <bpmn:outgoing>f_render_dispatch</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_render_dispatch" sourceRef="renderDocument" targetRef="dispatchDocument" />
+
+    <bpmn:serviceTask id="dispatchDocument" name="Dokument uebergeben"
+                      camunda:type="external" camunda:topic="dispatch-document">
+      <bpmn:incoming>f_render_dispatch</bpmn:incoming>
+      <bpmn:outgoing>f_dispatch_receive</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_dispatch_receive" sourceRef="dispatchDocument" targetRef="receiveResult" />
+
+    <!-- Receive Task: wartet auf die asynchrone technische Annahme (Auftrag 6.1.9) -->
+    <bpmn:receiveTask id="receiveResult" name="Auf technische Annahme warten"
+                      messageRef="msg_DeliveryResultReceived">
+      <bpmn:incoming>f_dispatch_receive</bpmn:incoming>
+      <bpmn:incoming>f_increment_receive</bpmn:incoming>
+      <bpmn:outgoing>f_receive_gwdelivery</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:sequenceFlow id="f_receive_gwdelivery" sourceRef="receiveResult" targetRef="gw_delivery" />
+
+    <!-- Interrupting Timer Boundary Event (Auftrag 6.1.10) -->
+    <bpmn:boundaryEvent id="timer_ack" name="Frist abgelaufen" attachedToRef="receiveResult" cancelActivity="true">
+      <bpmn:outgoing>f_timer_reconcile</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">${acknowledgementTimeout != null ? acknowledgementTimeout : "PT15S"}</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="f_timer_reconcile" sourceRef="timer_ack" targetRef="reconcileDelivery" />
+
+    <bpmn:exclusiveGateway id="gw_delivery" name="Annahme?" default="f_delivery_manual">
+      <bpmn:incoming>f_receive_gwdelivery</bpmn:incoming>
+      <bpmn:outgoing>f_delivery_accept</bpmn:outgoing>
+      <bpmn:outgoing>f_delivery_manual</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="f_delivery_accept" name="ACCEPTED" sourceRef="gw_delivery" targetRef="finalizeOutcome">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${deliveryResultStatus == "ACCEPTED"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_delivery_manual" name="abgelehnt/unklar" sourceRef="gw_delivery" targetRef="manualReview" />
+
+    <bpmn:serviceTask id="reconcileDelivery" name="Providerstatus abgleichen"
+                      camunda:type="external" camunda:topic="reconcile-delivery">
+      <bpmn:incoming>f_timer_reconcile</bpmn:incoming>
+      <bpmn:outgoing>f_reconcile_gw</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_reconcile_gw" sourceRef="reconcileDelivery" targetRef="gw_reconcile" />
+
+    <bpmn:exclusiveGateway id="gw_reconcile" name="Reconciliation?" default="f_recon_manual">
+      <bpmn:incoming>f_reconcile_gw</bpmn:incoming>
+      <bpmn:outgoing>f_recon_accept</bpmn:outgoing>
+      <bpmn:outgoing>f_recon_retry</bpmn:outgoing>
+      <bpmn:outgoing>f_recon_manual</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="f_recon_accept" name="ACCEPTED" sourceRef="gw_reconcile" targetRef="finalizeOutcome">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${deliveryResultStatus == "ACCEPTED"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_recon_retry" name="PENDING, erneut warten" sourceRef="gw_reconcile" targetRef="incrementStatusCheck">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${deliveryResultStatus == "PENDING" &amp;&amp; statusCheckCount &lt; maxStatusChecks}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_recon_manual" name="endgueltig unklar" sourceRef="gw_reconcile" targetRef="manualReview" />
+
+    <bpmn:serviceTask id="incrementStatusCheck" name="Statuszaehler erhoehen"
+                      camunda:delegateExpression="${incrementStatusCheckDelegate}">
+      <bpmn:incoming>f_recon_retry</bpmn:incoming>
+      <bpmn:outgoing>f_increment_receive</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_increment_receive" sourceRef="incrementStatusCheck" targetRef="receiveResult" />
+
+    <!-- User Task: manuelle Klaerung (Auftrag 6.2), erreicht aus mehreren Pfaden -->
+    <bpmn:userTask id="manualReview" name="Dokumentauftrag manuell klaeren: ${documentJobId}"
+                   camunda:candidateGroups="document-ops">
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="documentJobId" label="Dokumentauftrag" type="string" />
+          <camunda:formField id="documentType" label="Dokumentart" type="string" />
+          <camunda:formField id="manualReason" label="Klaerungsgrund" type="string" />
+          <camunda:formField id="missingRequiredFields" label="Fehlende Pflichtfelder" type="string" />
+          <camunda:formField id="degradationReasons" label="Degradationsgruende" type="string" />
+          <camunda:formField id="deliveryResultStatus" label="Zustellstatus" type="string" />
+          <camunda:formField id="manualResolution" label="Entscheidung" type="enum">
+            <camunda:value id="RETRY_ENRICHMENT" name="Erneut anreichern" />
+            <camunda:value id="DELIVER_REDUCED" name="Reduziert ausliefern" />
+            <camunda:value id="CANCEL_REQUEST" name="Auftrag abbrechen" />
+          </camunda:formField>
+          <camunda:formField id="manualComment" label="Kommentar" type="string" />
+          <camunda:formField id="correctedEmail" label="Korrigierte E-Mail" type="string" />
+          <camunda:formField id="correctedPostalAddress" label="Korrigierte Anschrift" type="string" />
+        </camunda:formData>
+        <camunda:taskListener event="create"
+            class="de.demo.versicherung.korrespondenz.process.ManualReviewTaskListener" />
+        <camunda:taskListener event="complete"
+            class="de.demo.versicherung.korrespondenz.process.ManualReviewTaskListener" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_gw_manual</bpmn:incoming>
+      <bpmn:incoming>f_delivery_manual</bpmn:incoming>
+      <bpmn:incoming>f_recon_manual</bpmn:incoming>
+      <bpmn:outgoing>f_manual_gw</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="f_manual_gw" sourceRef="manualReview" targetRef="gw_manual" />
+
+    <bpmn:exclusiveGateway id="gw_manual" name="Entscheidung?" default="f_reduced">
+      <bpmn:incoming>f_manual_gw</bpmn:incoming>
+      <bpmn:outgoing>f_cancel</bpmn:outgoing>
+      <bpmn:outgoing>f_retry</bpmn:outgoing>
+      <bpmn:outgoing>f_reduced</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="f_cancel" name="CANCEL_REQUEST" sourceRef="gw_manual" targetRef="cancelOutcome">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${manualResolution == "CANCEL_REQUEST"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_retry" name="RETRY_ENRICHMENT" sourceRef="gw_manual" targetRef="loadCustomer">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${manualResolution == "RETRY_ENRICHMENT"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_reduced" name="DELIVER_REDUCED" sourceRef="gw_manual" targetRef="markDegraded" />
+
+    <bpmn:serviceTask id="markDegraded" name="Reduzierten Versand markieren"
+                      camunda:delegateExpression="${markDegradedDelegate}">
+      <bpmn:incoming>f_reduced</bpmn:incoming>
+      <bpmn:outgoing>f_reduced_variant</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_reduced_variant" sourceRef="markDegraded" targetRef="evalVariant" />
+
+    <bpmn:serviceTask id="cancelOutcome" name="Auftrag abbrechen"
+                      camunda:delegateExpression="${cancelOutcomeDelegate}">
+      <bpmn:incoming>f_cancel</bpmn:incoming>
+      <bpmn:outgoing>f_cancel_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_cancel_end" sourceRef="cancelOutcome" targetRef="end_cancelled" />
+    <bpmn:endEvent id="end_cancelled" name="Nach Pruefung abgebrochen">
+      <bpmn:incoming>f_cancel_end</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:serviceTask id="finalizeOutcome" name="Ergebnis festlegen"
+                      camunda:delegateExpression="${finalizeOutcomeDelegate}">
+      <bpmn:incoming>f_delivery_accept</bpmn:incoming>
+      <bpmn:incoming>f_recon_accept</bpmn:incoming>
+      <bpmn:outgoing>f_finalize_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="f_finalize_end" sourceRef="finalizeOutcome" targetRef="end" />
+
+    <bpmn:endEvent id="end" name="Auftrag abgeschlossen">
+      <bpmn:incoming>f_finalize_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="diagram">
+    <bpmndi:BPMNPlane id="plane" bpmnElement="document_fulfillment">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start"><dc:Bounds x="112" y="182" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="normalize_di" bpmnElement="normalizeRequest"><dc:Bounds x="250" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="customer_di" bpmnElement="loadCustomer"><dc:Bounds x="420" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="contract_di" bpmnElement="loadContract"><dc:Bounds x="590" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="tariff_di" bpmnElement="loadTariff"><dc:Bounds x="760" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="completeness_di" bpmnElement="evalCompleteness"><dc:Bounds x="930" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gw_di" bpmnElement="gw_completeness" isMarkerVisible="true"><dc:Bounds x="1125" y="175" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="variant_di" bpmnElement="evalVariant"><dc:Bounds x="1270" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="policy_di" bpmnElement="evalPolicy"><dc:Bounds x="1440" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="render_di" bpmnElement="renderDocument"><dc:Bounds x="1610" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="dispatch_di" bpmnElement="dispatchDocument"><dc:Bounds x="1780" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="receive_di" bpmnElement="receiveResult"><dc:Bounds x="1950" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gwdelivery_di" bpmnElement="gw_delivery" isMarkerVisible="true"><dc:Bounds x="2145" y="175" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="finalize_di" bpmnElement="finalizeOutcome"><dc:Bounds x="2290" y="160" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_di" bpmnElement="end"><dc:Bounds x="2492" y="182" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="reconcile_di" bpmnElement="reconcileDelivery"><dc:Bounds x="1900" y="320" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gwreconcile_di" bpmnElement="gw_reconcile" isMarkerVisible="true"><dc:Bounds x="2095" y="335" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="increment_di" bpmnElement="incrementStatusCheck"><dc:Bounds x="2240" y="320" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="manual_di" bpmnElement="manualReview"><dc:Bounds x="1120" y="560" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gwmanual_di" bpmnElement="gw_manual" isMarkerVisible="true"><dc:Bounds x="1325" y="575" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="markdeg_di" bpmnElement="markDegraded"><dc:Bounds x="1490" y="560" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="cancel_di" bpmnElement="cancelOutcome"><dc:Bounds x="1300" y="700" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="endcancel_di" bpmnElement="end_cancelled"><dc:Bounds x="1522" y="722" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="timer_di" bpmnElement="timer_ack"><dc:Bounds x="1962" y="222" width="36" height="36" /></bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="f_start_normalize_di" bpmnElement="f_start_normalize"><di:waypoint x="148" y="200" /><di:waypoint x="250" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_normalize_customer_di" bpmnElement="f_normalize_customer"><di:waypoint x="350" y="200" /><di:waypoint x="420" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_customer_contract_di" bpmnElement="f_customer_contract"><di:waypoint x="520" y="200" /><di:waypoint x="590" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_contract_tariff_di" bpmnElement="f_contract_tariff"><di:waypoint x="690" y="200" /><di:waypoint x="760" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_tariff_completeness_di" bpmnElement="f_tariff_completeness"><di:waypoint x="860" y="200" /><di:waypoint x="930" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_completeness_gw_di" bpmnElement="f_completeness_gw"><di:waypoint x="1030" y="200" /><di:waypoint x="1125" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_gw_variant_di" bpmnElement="f_gw_variant"><di:waypoint x="1175" y="200" /><di:waypoint x="1270" y="200" /><bpmndi:BPMNLabel><dc:Bounds x="1210" y="150" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_variant_policy_di" bpmnElement="f_variant_policy"><di:waypoint x="1370" y="200" /><di:waypoint x="1440" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_policy_render_di" bpmnElement="f_policy_render"><di:waypoint x="1540" y="200" /><di:waypoint x="1610" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_render_dispatch_di" bpmnElement="f_render_dispatch"><di:waypoint x="1710" y="200" /><di:waypoint x="1780" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_dispatch_receive_di" bpmnElement="f_dispatch_receive"><di:waypoint x="1880" y="200" /><di:waypoint x="1950" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_receive_gwdelivery_di" bpmnElement="f_receive_gwdelivery"><di:waypoint x="2050" y="200" /><di:waypoint x="2145" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_delivery_accept_di" bpmnElement="f_delivery_accept"><di:waypoint x="2195" y="200" /><di:waypoint x="2290" y="200" /><bpmndi:BPMNLabel><dc:Bounds x="2212" y="178" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_finalize_end_di" bpmnElement="f_finalize_end"><di:waypoint x="2390" y="200" /><di:waypoint x="2492" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_timer_reconcile_di" bpmnElement="f_timer_reconcile"><di:waypoint x="1980" y="258" /><di:waypoint x="1980" y="320" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_reconcile_gw_di" bpmnElement="f_reconcile_gw"><di:waypoint x="2000" y="360" /><di:waypoint x="2095" y="360" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_recon_retry_di" bpmnElement="f_recon_retry"><di:waypoint x="2145" y="360" /><di:waypoint x="2240" y="360" /><bpmndi:BPMNLabel><dc:Bounds x="2162" y="345" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_recon_accept_di" bpmnElement="f_recon_accept"><di:waypoint x="2120" y="335" /><di:waypoint x="2120" y="282" /><di:waypoint x="2340" y="282" /><di:waypoint x="2340" y="240" /><bpmndi:BPMNLabel><dc:Bounds x="2270" y="268" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_increment_receive_di" bpmnElement="f_increment_receive"><di:waypoint x="2290" y="320" /><di:waypoint x="2290" y="306" /><di:waypoint x="2020" y="306" /><di:waypoint x="2020" y="240" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_gw_manual_di" bpmnElement="f_gw_manual"><di:waypoint x="1150" y="225" /><di:waypoint x="1150" y="560" /><bpmndi:BPMNLabel><dc:Bounds x="1130" y="380" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_delivery_manual_di" bpmnElement="f_delivery_manual"><di:waypoint x="2170" y="225" /><di:waypoint x="2170" y="258" /><di:waypoint x="2420" y="258" /><di:waypoint x="2420" y="500" /><di:waypoint x="1205" y="500" /><di:waypoint x="1205" y="560" /><bpmndi:BPMNLabel><dc:Bounds x="2220" y="242" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_recon_manual_di" bpmnElement="f_recon_manual"><di:waypoint x="2120" y="385" /><di:waypoint x="2120" y="435" /><di:waypoint x="1180" y="435" /><di:waypoint x="1180" y="560" /><bpmndi:BPMNLabel><dc:Bounds x="1820" y="423" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_manual_gw_di" bpmnElement="f_manual_gw"><di:waypoint x="1220" y="600" /><di:waypoint x="1325" y="600" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_reduced_di" bpmnElement="f_reduced"><di:waypoint x="1375" y="600" /><di:waypoint x="1490" y="600" /><bpmndi:BPMNLabel><dc:Bounds x="1402" y="583" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_cancel_di" bpmnElement="f_cancel"><di:waypoint x="1350" y="625" /><di:waypoint x="1350" y="700" /><bpmndi:BPMNLabel><dc:Bounds x="1322" y="660" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_cancel_end_di" bpmnElement="f_cancel_end"><di:waypoint x="1400" y="740" /><di:waypoint x="1522" y="740" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_reduced_variant_di" bpmnElement="f_reduced_variant"><di:waypoint x="1540" y="560" /><di:waypoint x="1540" y="535" /><di:waypoint x="1320" y="535" /><di:waypoint x="1320" y="240" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_retry_di" bpmnElement="f_retry"><di:waypoint x="1350" y="625" /><di:waypoint x="1250" y="625" /><di:waypoint x="1250" y="820" /><di:waypoint x="470" y="820" /><di:waypoint x="470" y="240" /><bpmndi:BPMNLabel><dc:Bounds x="730" y="805" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
